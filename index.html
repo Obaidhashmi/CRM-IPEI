@@ -125,8 +125,8 @@ function setV(){
  <div class="f">${col('acc','Buttons and accent')}${col('side','Sidebar')}${col('chart','Chart color')}<div></div>
  <div class="full"><label>Color presets</label><div class="pre">${PRE.map((p,i)=>`<button class="btn ghost" onclick="preset(${i})"><span class="dot" style="background:${p[0]}"></span> ${p[3]}</button>`).join('')}</div></div>
  <div class="full"><label>Dashboard widgets</label>${WN.map(w=>`<label ${lbl}><input type="checkbox" style="width:auto" ${theme.hide.includes(w[0])?'':'checked'} onchange="tw('${w[0]}')"> ${w[1]}</label>`).join('')}</div></div></div>
- <div class="card"><h3 style="margin-top:0">Lead sheets</h3><div class="mut" style="margin-bottom:8px">Add your sheets by hand: in Google Sheets choose File, Download, then CSV or Excel, and press Add sheets for that source. You can pick several files at once, and every tab of an Excel file is read. Leads with a phone or email already in the CRM are skipped. The link boxes are only for quick reference.</div>
- ${Object.keys(SRC).map(k=>{const z=sheets[k]||{};return `<div class="srow"><div><span class="dot" style="background:${SRC[k]}"></span> <b>${k}</b>${(z.files||[]).slice(0,5).map(f=>`<div class="mut">${esc(f.name)}: ${f.n} added, ${f.skip} skipped</div>`).join('')||'<div class="mut">Nothing added yet</div>'}${z.err?`<div style="color:var(--hot);font-size:13px">${z.err}</div>`:''}</div><div>${(urls(k).length?urls(k):['']).map((u,i)=>`<div style="display:flex;gap:6px;margin-bottom:6px"><input placeholder="Paste Google Sheet link ${i+1}" value="${esc(u)}" oninput="sl('${k}',${i},this.value)"><button class="btn del" onclick="rmS('${k}',${i})">Remove</button></div>`).join('')}<button class="btn ghost" onclick="addS('${k}')">Add another sheet link</button></div><div><button class="btn ghost" onclick="openS('${k}')">Open sheet</button> <label class="btn">Add sheets<input type="file" multiple accept=".csv,.xlsx,.xls,text/csv" hidden onchange="impFiles('${k}',this)"></label></div></div>`}).join('')}</div>`}
+ <div class="card"><h3 style="margin-top:0">Lead sheets</h3><div class="mut" style="margin-bottom:8px">Paste each source's Google Sheet link and share the sheet as "Anyone with the link can view". This page checks every link when it opens and every 5 minutes while it stays open, and adds new leads. You can also press Add sheets to upload CSV or Excel files by hand. Leads with a phone or email already in the CRM are skipped. <button class="btn" onclick="syncAll()">Sync all now</button></div>
+ ${Object.keys(SRC).map(k=>{const z=sheets[k]||{};return `<div class="srow"><div><span class="dot" style="background:${SRC[k]}"></span> <b>${k}</b><div class="mut">${z.at?`Last import: ${z.n} added, ${z.skip} skipped, ${fmt(z.at)}`:'Not imported yet'}${z.chk?', checked '+new Date(z.chk).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):''}</div>${z.err?`<div style="color:var(--hot);font-size:13px">${z.err}</div>`:''}</div><div>${(urls(k).length?urls(k):['']).map((u,i)=>`<div style="display:flex;gap:6px;margin-bottom:6px"><input placeholder="Paste Google Sheet link ${i+1}" value="${esc(u)}" oninput="sl('${k}',${i},this.value)"><button class="btn del" onclick="rmS('${k}',${i})">Remove</button></div>`).join('')}<button class="btn ghost" onclick="addS('${k}')">Add another sheet link</button></div><div><button class="btn ghost" onclick="openS('${k}')">Open sheet</button> <button class="btn ghost" onclick="syncOne('${k}').then(()=>setV())">Sync now</button> <label class="btn">Add sheets<input type="file" multiple accept=".csv,.xlsx,.xls,text/csv" hidden onchange="impFiles('${k}',this)"></label></div></div>`}).join('')}</div>`}
 function parseCSV(t){const R=[];let r=[],c='',q=false;for(let i=0;i<t.length;i++){const h=t[i];if(q){if(h==='"'){if(t[i+1]==='"'){c+='"';i++}else q=false}else c+=h}else if(h==='"')q=true;else if(h===','){r.push(c);c=''}else if(h==='\n'||h==='\r'){if(h==='\r'&&t[i+1]==='\n')i++;r.push(c);R.push(r);r=[];c=''}else c+=h}if(c||r.length){r.push(c);R.push(r)}return R.filter(x=>x.some(y=>y.trim()))}
 function ingest(src,text,quiet){
  const rows=parseCSV(String(text).replace(/^\uFEFF/,''));const h=(rows.shift()||[]).map(x=>x.toLowerCase().trim());
@@ -139,12 +139,9 @@ function ingest(src,text,quiet){
   leads.unshift({id:'i'+Date.now()+'_'+add,name,phone:p,email:e,source:src,temp:pick(TEMPS,g(r,'t'),'Warm'),stage:pick(STAGES,g(r,'g'),'New'),notes:g(r,'o'),company:g(r,'c'),amount:+g(r,'a').replace(/[^\d.]/g,'')||0,close:'',created:Date.now()});add++});
  if(add||!quiet){sheets[src]={...(sheets[src]||{}),at:Date.now(),n:add,skip,err:''};plog('Imported '+add+' '+src+' leads, '+skip+' duplicates skipped')}
  (sheets[src]=sheets[src]||{}).chk=Date.now();sv('ld_s',sheets);save();if(!quiet||add)render();return add}
-async function impFiles(src,inp){const S=()=>sheets[src]=sheets[src]||{};
- for(const f of [...inp.files]){try{let n=0,k=0;
-  if(/\.xlsx?$/i.test(f.name)){if(!window.XLSX)throw 0;const wb=XLSX.read(await f.arrayBuffer(),{type:'array'});for(const nm of wb.SheetNames){n+=ingest(src,XLSX.utils.sheet_to_csv(wb.Sheets[nm]));k+=S().skip||0}}
-  else{n=ingest(src,await f.text());k=S().skip||0}
-  (S().files=S().files||[]).unshift({name:f.name,n,skip:k,at:Date.now()});S().err=''}
- catch(e){S().err='Could not read '+f.name+'. Use a CSV or Excel file.'}}
+async function impFiles(src,inp){for(const f of [...inp.files]){try{
+ if(/\.xlsx?$/i.test(f.name)){if(!window.XLSX)throw 0;const wb=XLSX.read(await f.arrayBuffer(),{type:'array'});for(const nm of wb.SheetNames)ingest(src,XLSX.utils.sheet_to_csv(wb.Sheets[nm]))}
+ else ingest(src,await f.text())}catch(e){(sheets[src]=sheets[src]||{}).err='Could not read '+f.name+'. Use a CSV or Excel file.'}}
  sv('ld_s',sheets);inp.value='';setV()}
 function impCSV(src,inp){const f=inp.files[0];if(!f)return;const fr=new FileReader();fr.onload=()=>{ingest(src,fr.result)};fr.readAsText(f)}
 const gurl=u=>{u=(u||'').trim();const m=u.match(/\/d\/([\w-]+)/);if(!m||/output=csv|\/pub|gviz|export\?/.test(u))return u;const g=u.match(/gid=(\d+)/);return 'https://docs.google.com/spreadsheets/d/'+m[1]+'/gviz/tq?tqx=out:csv'+(g?'&gid='+g[1]:'')};
@@ -152,7 +149,7 @@ async function syncOne(k,quiet){let t=0;for(const raw of urls(k)){const u=gurl(r
  try{const r=await fetch(u);if(!r.ok)throw 0;const x=await r.text();if(/^\s*<(!doctype|html)/i.test(x))throw 0;t+=ingest(k,x,quiet)}
  catch(e){(sheets[k]=sheets[k]||{}).err='Could not read one of these sheets. Share it with anyone who has the link, or publish it to the web as CSV.';sv('ld_s',sheets)}}return t}
 async function syncAll(quiet){let t=0;for(const k of Object.keys(SRC))t+=await syncOne(k,quiet);if(!quiet)render();return t}
-
+setInterval(()=>syncAll(true),300000);
 function pipe(){
  $('main').innerHTML=`<div class="top"><h2>Deals</h2><button class="btn" onclick="edit()">Add deal</button></div><div class="kan">${STAGES.map(s=>{const r=leads.filter(l=>l.stage===s),t=r.reduce((a,l)=>a+(+l.amount||0),0);return `<div class="col" ondragover="event.preventDefault()" ondrop="drop(event,'${s}')"><div class="ch"><span><span class="pill" style="background:${SC[s]}">${s}</span> <span class="mut">${r.length}</span></span></div>${r.map(l=>`<div class="kc" draggable="true" ondragstart="event.dataTransfer.setData('t','${l.id}')" onclick="edit('${l.id}')"><b>${esc(l.name)}</b><div class="mut">${esc(l.company)}</div><div>${usd(l.amount)}${l.close?', closes '+l.close:''}</div><div><span class="dot" style="background:${SRC[l.source]}"></span> ${l.source} <span class="tag t-${l.temp}" style="float:right">${l.temp}</span></div></div>`).join('')}<div class="kf"><b>${usd(t)}</b> total<br>${usd(t*PR[s])} (${PR[s]*100}%) weighted</div></div>`}).join('')}</div>`}
 function drop(e,s){const l=leads.find(x=>x.id===e.dataTransfer.getData('t'));if(l&&l.stage!==s){plog(l.name+' moved from '+l.stage+' to '+s);l.stage=s;save();pipe()}}
@@ -202,5 +199,5 @@ function csv(){
  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download='leads.csv';a.click()}
 $('modal').addEventListener('click',e=>{if(e.target.id==='modal')closeM()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeM()});
-applyTheme();render();
+applyTheme();render();syncAll(true);
 </script></body></html>
