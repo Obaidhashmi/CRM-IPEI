@@ -166,11 +166,12 @@ const PRI=['date','phone','program','applicant','experience','fee','price','csr'
 const yes=l=>k=>/^y/i.test(xv(l.extra,k));
 function sheetRows(){const q=sf.q.toLowerCase(),now=Date.now();
  return leads.filter(l=>l.extra&&(!sf.src||l.source===sf.src)&&(!sf.course||l.course===sf.course)&&(!sf.price||yes(l)('price')===(sf.price==='Yes'))&&(!sf.csr||yes(l)('csr')===(sf.csr==='Yes'))&&(!sf.days||l.created>=now-sf.days*864e5)&&(!q||(l.name+' '+l.phone+' '+Object.values(l.extra).join(' ')).toLowerCase().includes(q))).sort((a,b)=>b.created-a.created)}
-function sheetCols(rows){const ks=[];rows.forEach(l=>Object.keys(l.extra).forEach(k=>{if(!ks.includes(k))ks.push(k)}));const pr=x=>{const i=PRI.findIndex(p=>x.toLowerCase().includes(p));return i<0?99:i};return ks.sort((a,b)=>pr(a)-pr(b))}
-function sheetBody(){const rows=sheetRows(),cols=sheetCols(rows);$('sc').textContent='('+rows.length+')';
- $('sb').innerHTML=rows.length?`<table style="min-width:${300+cols.length*130}px"><tr><th>Source</th><th>Course</th>${cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr>${rows.slice(0,500).map(l=>`<tr class="r" onclick="edit('${l.id}')"><td><span class="dot" style="background:${SRC[l.source]}"></span> ${l.source}</td><td>${esc(l.course)||'<span class="mut">Not set</span>'}</td>${cols.map(c=>`<td>${esc(l.extra[c]||'')}</td>`).join('')}</tr>`).join('')}</table>`:'<div class="empty">No sheet leads match. Sync a sheet in Settings, or clear a filter.</div>'}
-function sheetCsv(){const rows=sheetRows(),cols=sheetCols(rows),q=x=>'"'+String(x||'').replace(/"/g,'""')+'"';
- const t=[['Source','Course'].concat(cols).map(q).join(',')].concat(rows.map(l=>[l.source,l.course].concat(cols.map(c=>l.extra[c])).map(q).join(','))).join('\n');
+const SCOLS=[['Date',['date']],['Number',['phone','number','whatsapp']],['Program',['program']],['Applicant Type',['applicant']],['Experience',['experience']],['Fee',['fee']],['Price Confirmed',['price']],['CSR Requested',['csr']],['Selected Program',['selected']]];
+function cell(l,subs,label){const ks=Object.keys(l.extra||{});let k=ks.find(x=>subs.includes(x.toLowerCase().trim()));if(!k)k=ks.find(x=>{const y=x.toLowerCase();return subs.some(z=>y.includes(z))&&!(label==='Program'&&y.includes('selected'))});let v=k?l.extra[k]:'';if(label==='Program'&&!v)v=l.course||'';return v}
+function sheetBody(){const rows=sheetRows();$('sc').textContent='('+rows.length+')';
+ $('sb').innerHTML=rows.length?`<table style="min-width:1100px"><tr>${SCOLS.map(c=>`<th>${c[0]}</th>`).join('')}</tr>${rows.slice(0,500).map(l=>`<tr class="r" onclick="edit('${l.id}')">${SCOLS.map(c=>`<td>${esc(cell(l,c[1],c[0]))}</td>`).join('')}</tr>`).join('')}</table>`:'<div class="empty">No sheet leads match. Sync a sheet in Settings, or clear a filter.</div>'}
+function sheetCsv(){const rows=sheetRows(),q=x=>'"'+String(x||'').replace(/"/g,'""')+'"';
+ const t=[SCOLS.map(c=>q(c[0])).join(',')].concat(rows.map(l=>SCOLS.map(c=>q(cell(l,c[1],c[0]))).join(','))).join('\n');
  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download='sheet-data.csv';a.click()}
 function sheetV(){
  const all=leads.filter(l=>l.extra),now=Date.now(),day=new Date().setHours(0,0,0,0);
